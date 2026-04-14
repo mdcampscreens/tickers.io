@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NFL News Bottom Line</title>
+    <title>Sports Bottom Line</title>
     <style>
-        /* Ensures the background is transparent so it can overlay smoothly */
         body, html {
             margin: 0;
             padding: 0;
@@ -14,7 +13,6 @@
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         }
 
-        /* 1920x80 exact container matching the layout JSON bounds */
         #bottom-line {
             position: absolute;
             bottom: 0;
@@ -27,7 +25,6 @@
             border-top: 2px solid #333333;
         }
 
-        /* The custom teal brand block */
         #brand-block {
             width: 180px;
             background-color: #008E97;
@@ -38,7 +35,7 @@
             font-size: 28px;
             font-weight: 900;
             letter-spacing: 1px;
-            z-index: 10; /* Keeps it above the scrolling text */
+            z-index: 10;
             box-shadow: 5px 0 15px rgba(0,0,0,0.5);
         }
 
@@ -50,12 +47,11 @@
             align-items: center;
         }
 
-        /* Continuous CSS scroll animation */
         #ticker-data {
             display: inline-block;
             white-space: nowrap;
             padding-left: 100%;
-            animation: tickerScroll 40s linear infinite;
+            animation: tickerScroll linear infinite;
             font-size: 24px;
         }
 
@@ -64,7 +60,7 @@
             100% { transform: translate3d(-100%, 0, 0); }
         }
 
-        /* Styling individual news items */
+        /* Styling for News Headlines */
         .news-item {
             display: inline-block;
             margin-right: 30px;
@@ -72,6 +68,27 @@
             color: #eeeeee;
         }
         
+        /* Styling for Scoreboards */
+        .score-item {
+            display: inline-block;
+            margin-right: 30px;
+        }
+        .team {
+            font-weight: bold;
+            color: #eeeeee;
+        }
+        .score {
+            margin-left: 8px;
+            margin-right: 8px;
+            color: #ffffff;
+        }
+        .status {
+            color: #aaaaaa;
+            font-size: 20px;
+            margin-left: 8px;
+        }
+
+        /* The Teal Divider */
         .separator {
             display: inline-block;
             margin-right: 30px;
@@ -85,44 +102,94 @@
     <div id="bottom-line">
         <div id="brand-block">NEWS</div>
         <div id="ticker-wrap">
-            <div id="ticker-data">Loading live news...</div>
+            <div id="ticker-data">Loading live updates...</div>
         </div>
     </div>
 
     <script>
-        const API_URL = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/news';
+        const API_URLS = [
+            'https://site.api.espn.com/apis/site/v2/sports/football/nfl/news',
+            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
+            'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard'
+        ];
 
-        async function fetchNFLNews() {
-            try {
-                const response = await fetch(API_URL);
-                const data = await response.json();
-                
-                let tickerContent = '';
+        async function fetchAllData() {
+            let tickerContent = '';
+            let itemCount = 0;
+            const uniqueHeadlines = new Set(); 
 
-                if (data.articles && data.articles.length > 0) {
-                    data.articles.forEach(article => {
-                        const headline = article.headline;
-                        tickerContent += `
-                            <span class="news-item">${headline}</span> 
-                            <span class="separator">///</span>
-                        `;
-                    });
-                } else {
-                    tickerContent = '<span class="news-item">No news available at this time.</span>';
+            for (const url of API_URLS) {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) continue; 
+                    
+                    const data = await response.json();
+                    
+                    // IF THE URL IS A NEWS FEED
+                    if (data.articles && data.articles.length > 0) {
+                        data.articles.forEach(article => {
+                            const headline = article.headline;
+                            if (!uniqueHeadlines.has(headline)) {
+                                uniqueHeadlines.add(headline);
+                                tickerContent += `
+                                    <span class="news-item">${headline}</span> 
+                                    <span class="separator">///</span>
+                                `;
+                                itemCount++;
+                            }
+                        });
+                    } 
+                    // IF THE URL IS A SCOREBOARD FEED
+                    else if (data.events && data.events.length > 0) {
+                        data.events.forEach(event => {
+                            const comp = event.competitions[0];
+                            const away = comp.competitors.find(c => c.homeAway === 'away');
+                            const home = comp.competitors.find(c => c.homeAway === 'home');
+                            
+                            const awayTeam = away.team.abbreviation;
+                            const awayScore = away.score || '';
+                            const homeTeam = home.team.abbreviation;
+                            const homeScore = home.score || '';
+                            const status = event.status.type.shortDetail;
+
+                            tickerContent += `
+                                <span class="score-item">
+                                    <span class="team">${awayTeam}</span> 
+                                    <span class="score">${awayScore}</span> 
+                                    <span style="color:#666;">@</span> 
+                                    <span class="team">${homeTeam}</span> 
+                                    <span class="score">${homeScore}</span> 
+                                    <span class="status">(${status})</span>
+                                </span>
+                                <span class="separator">///</span>
+                            `;
+                            itemCount++;
+                        });
+                    }
+                } catch (error) {
+                    console.warn("Skipping URL due to error: " + url, error);
                 }
-
-                document.getElementById('ticker-data').innerHTML = tickerContent;
-            } catch (error) {
-                console.error("Error fetching news:", error);
-                document.getElementById('ticker-data').innerHTML = "Unable to load live feed.";
             }
+
+            const tickerElement = document.getElementById('ticker-data');
+            
+            if (tickerContent === '') {
+                tickerElement.innerHTML = '<span class="news-item">No updates available at this time.</span>';
+            } else {
+                tickerElement.innerHTML = tickerContent;
+            }
+
+            // Dynamically adjust speed based on total items (news + scores)
+            const safeCount = itemCount > 0 ? itemCount : 1;
+            const scrollDuration = Math.max(40, safeCount * 6); 
+            tickerElement.style.animationDuration = `${scrollDuration}s`;
         }
 
         // Initial fetch
-        fetchNFLNews();
+        fetchAllData();
 
-        // Refresh news every 5 minutes (300000 ms) since news doesn't update as fast as scores
-        setInterval(fetchNFLNews, 300000);
+        // Refresh every 2 minutes to keep scores and news fresh
+        setInterval(fetchAllData, 120000);
     </script>
 </body>
 </html>
